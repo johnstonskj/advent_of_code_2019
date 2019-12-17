@@ -1,12 +1,14 @@
 #lang racket/base
 
 (require
-  "core.rkt" "error.rkt" "trace.rkt"
+  "core.rkt" "error.rkt" "gpio.rkt" "trace.rkt"
   racket/bool racket/file racket/format racket/list racket/string racket/vector)
 
-(provide reset execute)
+(provide reset execute registers)
 
 ;; ----------------------------------------------------------------------------
+
+(define CLOCK 0)
 
 (define PC 0)
 
@@ -17,7 +19,8 @@
 (define (reset)
   (error-reset)
   (set! STATE 'init)
-  (set! PC 0))
+  (set! PC 0)
+  (clock-tick))
 
 (define (execute #:start [start 0]
                  #:trace [enabled #f])
@@ -25,12 +28,25 @@
   (set! PC start)
   (set! STATE 'running)
   (do () ((not (symbol=? STATE 'running)))
-    (execute-instruction)))
+    (execute-instruction)
+    (clock-tick)))
+
+(define (registers)
+  (hash
+    'clock CLOCK
+    'pc PC
+    'state STATE
+    'err (error-code)))
 
 ;; ----------------------------------------------------------------------------
 
+(define (clock-tick)
+  (set! CLOCK (+ CLOCK 1)))
+
 (define (param-iref i)
-  (core-ref (+ PC i)))
+  (let ([param (core-ref (+ PC i))])
+    (trace-param param #t)
+    param))
 
 (define (param-ref modes i)
   (let* ([c (+ PC i)]
@@ -54,12 +70,14 @@
 
 (define *instructions*
   (hash
+   0 (λ (modes)
+        (trace-opcode "NOOP")
+        1)
    1 (λ (modes)
        (trace-opcode "ADD")
        (let ([xv (param-ref modes 1)]
              [yv (param-ref modes 2)]
              [result (param-iref 3)])
-         (trace-param result #t)
          (core-set! result (+ xv yv)))
        4)
    2 (λ (modes)
@@ -67,23 +85,20 @@
        (let ([xv (param-ref modes 1)]
              [yv (param-ref modes 2)]
              [result (param-iref 3)])
-         (trace-param result #t)
          (core-set! result (* xv yv)))
        4)
    3 (λ (modes)
+       (trace-opcode "INP")
        (let ([result (param-iref 1)])
-         (trace-opcode "INP")
-         (trace-param result #t)
-         (let ([input (read)])
+         (let ([input (pin-read)])
            (unless (number? input)
              (exec-error 4 "invalid input" input))
            (core-set! result input)))
        2)
    4 (λ (modes)
+       (trace-opcode "OUT")
        (let ([result (param-iref 1)])
-         (trace-opcode "OUT")
-         (trace-param result #t)
-         (display (format "[[~a]]" (core-ref result))))
+         (pin-write (core-ref result)))
        2)
    5 (λ (modes)
        (trace-opcode "JIFT")
@@ -108,7 +123,6 @@
        (let ([left (param-ref modes 1)]
              [right (param-ref modes 2)]
              [result (param-iref 3)])
-         (trace-param result #t)
          (cond
            [(< left right)
             (core-set! result 1)]
@@ -119,7 +133,6 @@
        (let ([left (param-ref modes 1)]
              [right (param-ref modes 2)]
              [result (param-iref 3)])
-         (trace-param result #t)
          (cond
            [(= left right)
             (core-set! result 1)]

@@ -1,10 +1,10 @@
 #lang scribble/manual
-@require[@for-label[advent_of_code
+@require[@for-label[adventofcode
                     racket/base]]
 
-@title{advent_of_code}
+@title{adventofcode}
 @author{simonjo}
 
-@defmodule[advent_of_code]
+@defmodule[adventofcode]
 
 Package Description Here

@@ -2,7 +2,7 @@
 
 (require racket/file racket/string)
 
-(provide load-wires)
+(provide load-wires decode-wire trace-wire)
 
 ;; ----------------------------------------------------------------------------
 
@@ -25,9 +25,12 @@
   (map decode-point (string-split wire-line ",")))
 
 (define (trace-wire wire origin)
-  (list->set
-   (flatten
-    (let next-point ([point origin] [dir wire]))
-      
-    (for/list ([p (append wire])
-      
+  (displayln origin))
+
+;(define (trace-wire wire origin)
+;  (list->set
+;   (flatten
+;    (let next-point ([point origin] [dir wire]))
+;      
+;    (for/list ([p (append wire])
+;      
