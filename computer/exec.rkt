@@ -1,142 +1,122 @@
 #lang racket/base
 
 (require
-  "core.rkt" "error.rkt" "gpio.rkt" "trace.rkt"
+  "core.rkt" "error.rkt" "gpio.rkt" "trace.rkt" "_machine.rkt"
   racket/bool racket/file racket/format racket/list racket/string racket/vector)
 
-(provide reset execute registers)
+(provide execute)
 
 ;; ----------------------------------------------------------------------------
 
-(define CLOCK 0)
-
-(define PC 0)
-
-(define STATE 'init)
-
-;; ----------------------------------------------------------------------------
-
-(define (reset)
-  (error-reset)
-  (set! STATE 'init)
-  (set! PC 0)
-  (clock-tick))
-
-(define (execute #:start [start 0]
+(define (execute machine
+                 #:start [start 0]
                  #:trace [enabled #f])
   (trace-enable enabled)
-  (set! PC start)
-  (set! STATE 'running)
-  (do () ((not (symbol=? STATE 'running)))
-    (execute-instruction)
-    (clock-tick)))
-
-(define (registers)
-  (hash
-    'clock CLOCK
-    'pc PC
-    'state STATE
-    'err (error-code)))
+  (set-machine-pc! machine start)
+  (set-machine-state! machine 'running)
+  (do () ((not (symbol=? (machine-state machine) 'running)))
+    (execute-instruction machine)
+    (clock-tick machine)))
 
 ;; ----------------------------------------------------------------------------
 
-(define (clock-tick)
-  (set! CLOCK (+ CLOCK 1)))
+(define (clock-tick machine)
+  (set-machine-clock! machine (+ (machine-clock machine) 1)))
 
-(define (param-iref i)
-  (let ([param (core-ref (+ PC i))])
+(define (param-iref machine i)
+  (let ([param (core-ref (machine-core machine) (+ (machine-pc machine) i))])
     (trace-param param #t)
     param))
 
-(define (param-ref modes i)
-  (let* ([c (+ PC i)]
+(define (param-ref machine modes i)
+  (let* ([c (+ (machine-pc machine) i)]
          [mode (if (>= (length modes) i)
                    (cond
                      [(= i 1) (first modes)]
                      [(= i 2) (second modes)]
                      [(= i 3) (third modes)]
                      [(= i 4) (fourth modes)]
-                     [else (exec-error 3 "invalid opcode mode ref" i)])
+                     [else (error-interrupt 3 "invalid opcode mode ref" i)])
                    0)]
-         [immediate (core-ref c)])
+         [immediate (core-ref (machine-core machine) c)])
     (cond
       [(= mode *opcode-mode-position*)
        (trace-param immediate #t)
-       (core-ref immediate)]
+       (core-ref (machine-core machine) immediate)]
       [(= mode *opcode-mode-immediate*)
        (trace-param immediate #f)
        immediate]
-      [else (exec-error 3 "invalid opcode mode" mode)])))
+      [else (error-interrupt 3 "invalid opcode mode" mode)])))
 
 (define *instructions*
   (hash
-   0 (λ (modes)
+   0 (λ (modes machine)
         (trace-opcode "NOOP")
         1)
-   1 (λ (modes)
+   1 (λ (modes machine)
        (trace-opcode "ADD")
-       (let ([xv (param-ref modes 1)]
-             [yv (param-ref modes 2)]
-             [result (param-iref 3)])
-         (core-set! result (+ xv yv)))
+       (let ([xv (param-ref machine modes 1)]
+             [yv (param-ref machine modes 2)]
+             [result (param-iref machine 3)])
+         (core-set! (machine-core machine) result (+ xv yv)))
        4)
-   2 (λ (modes)
+   2 (λ (modes machine)
        (trace-opcode "MUL")
-       (let ([xv (param-ref modes 1)]
-             [yv (param-ref modes 2)]
-             [result (param-iref 3)])
-         (core-set! result (* xv yv)))
+       (let ([xv (param-ref machine modes 1)]
+             [yv (param-ref machine modes 2)]
+             [result (param-iref machine 3)])
+         (core-set! (machine-core machine) result (* xv yv)))
        4)
-   3 (λ (modes)
+   3 (λ (modes machine)
        (trace-opcode "INP")
-       (let ([result (param-iref 1)])
-         (let ([input (pin-read)])
+       (let ([result (param-iref machine 1)])
+         (let ([input (pin-read (machine-pins machine))])
            (unless (number? input)
-             (exec-error 4 "invalid input" input))
-           (core-set! result input)))
+             (error-interrupt 4 "invalid input" input))
+           (core-set! (machine-core machine) result input)))
        2)
-   4 (λ (modes)
+   4 (λ (modes machine)
        (trace-opcode "OUT")
-       (let ([result (param-iref 1)])
-         (pin-write (core-ref result)))
+       (let ([result (param-iref machine 1)])
+         (pin-write (core-ref (machine-core machine) result) (machine-pins machine)))
        2)
-   5 (λ (modes)
+   5 (λ (pc modes machine)
        (trace-opcode "JIFT")
-       (let ([test (param-ref modes 1)]
-             [newpc (param-ref modes 2)])
+       (let ([test (param-ref machine modes 1)]
+             [newpc (param-ref machine modes 2)])
          (cond
            [(not (= test 0))
-            (set! PC newpc)
+            (set-machine-pc! machine newpc)
             0]
            [else 2])))
-   6 (λ (modes)
+   6 (λ (modes machine)
        (trace-opcode "JIFF")
-       (let ([test (param-ref modes 1)]
-             [newpc (param-ref modes 2)])
+       (let ([test (param-ref machine modes 1)]
+             [newpc (param-ref machine modes 2)])
          (cond
            [(= test 0)
-            (set! PC newpc)
+            (set-machine-pc! machine newpc)
             0]
            [else 2])))
-   7 (λ (modes)
+   7 (λ (modes machine)
        (trace-opcode "LT")
-       (let ([left (param-ref modes 1)]
-             [right (param-ref modes 2)]
-             [result (param-iref 3)])
+       (let ([left (param-ref machine modes 1)]
+             [right (param-ref machine modes 2)]
+             [result (param-iref machine 3)])
          (cond
            [(< left right)
-            (core-set! result 1)]
-           [else (core-set! result 0)]))
+            (core-set!(machine-core machine)  result 1)]
+           [else (core-set! (machine-core machine) result 0)]))
        4)
-   8 (λ (modes)
+   8 (λ (modes machine)
        (trace-opcode "EQ")
-       (let ([left (param-ref modes 1)]
-             [right (param-ref modes 2)]
-             [result (param-iref 3)])
+       (let ([left (param-ref machine modes 1)]
+             [right (param-ref machine modes 2)]
+             [result (param-iref machine 3)])
          (cond
            [(= left right)
-            (core-set! result 1)]
-           [else (core-set! result 0)]))
+            (core-set! (machine-core machine) result 1)]
+           [else (core-set! (machine-core machine) result 0)]))
        4)
    ))
 
@@ -156,22 +136,22 @@
       (λ (c) (- (char->integer c) *char-zero*))
       (reverse (string->list (number->string modes)))))))
 
-(define (execute-instruction)
+(define (execute-instruction machine)
   (traceln)
-  (let ([opcode (core-ref PC)])
+  (let* ([current-pc (machine-pc machine)]
+         [opcode (core-ref (machine-core machine) current-pc)])
     (let-values ([(opcode modes) (decode-opcode opcode)])
-      (trace-state PC STATE (error-code))
+      (trace-state machine)
       (cond
         [(= opcode *opcode-halt*)
          (trace-opcode "HALT")
-         (set! STATE 'halted)]
+         (set-machine-state! machine 'halted)]
 
         [(hash-has-key? *instructions* opcode)
-         (let* ([instruction (hash-ref  *instructions* opcode)]
-                [pc-offset (instruction modes)])
-           (set! PC (+ PC pc-offset)))]
+         (let* ([instruction (hash-ref *instructions* opcode)]
+                [pc-offset (instruction modes machine)])
+           (set-machine-pc! machine (+ current-pc pc-offset)))]
 
         [else
-         (trace-state PC STATE 2)
-         (core-dump)
-         (exec-error 2 "invalid opcode" opcode)]))))
+         (trace-state machine)
+         (error-interrupt 2 "invalid opcode" opcode)]))))
