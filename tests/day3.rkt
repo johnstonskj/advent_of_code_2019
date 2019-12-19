@@ -1,13 +1,20 @@
 #lang racket/base
 
-(require adventofcode/wiring rackunit)
+(require adventofcode/wiring racket/list rackunit)
 
 ;; ----------------------------------------------------------------------------
 
-
 (test-case
  "***** Day 3, Part 1 *****"
- (define test-wires
-   (decode-wire "R75,D30,R83,U83,L12,D49,R71,U7,L72"))
- (define trace (trace-wire test-wires '(0 . 0)))
- (displayln trace))
+ (let* ([wires (load-wires "../data/crossed-wires.txt")]
+        [origin '(0 . 0)]
+        [crossings (wires->crossings wires origin)]
+        [distances (crossing-distances crossings origin)]
+        [shortest (first distances)])
+   (displayln
+    (format
+     "shortest distance is ~a to the point at x: ~a, y: ~a"
+     (car shortest)
+     (car (cdr shortest))
+     (cdr (cdr shortest))))
+   (check-eq? (car shortest) 266)))
