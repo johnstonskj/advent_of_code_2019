@@ -1,5 +1,9 @@
 # Racket package advent_of_code
 
+[![GitHub release](https://img.shields.io/github/release/johnstonskj/advent_of_code_2019.svg?style=flat-square)](https://github.com/johnstonskj/advent_of_code_2019/releases)
+[![GitHub stars](https://img.shields.io/github/stars/johnstonskj/advent_of_code_2019.svg)](https://github.com/johnstonskj/advent_of_code_2019/stargazers)
+![mit License](https://img.shields.io/badge/license-mit-118811.svg)
+
 My own solutions to the [2019 Advent of Code](https://adventofcode.com/2019)
 problems. All in Racket, none meant to be optimized, code is simply written
 just for my fun.
