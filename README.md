@@ -1,7 +1,8 @@
 # Racket package advent_of_code
 
 My own solutions to the [2019 Advent of Code](https://adventofcode.com/2019)
-problems. All in Racket, none meant to bve optimized, just for fun.
+problems. All in Racket, none meant to be optimized, code is simply written
+just for my fun.
 
 ## Layout
 
@@ -15,3 +16,5 @@ ensure they don't break past solutions.
 All problem inputs are saved as files in the `data` directory.
 
 For in-progress cases internal tests may be found in the module itself.
+
+[Simon Johnston](mailto:johnstonskj@gmail.com).
